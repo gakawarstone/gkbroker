@@ -9,9 +9,9 @@ from pydantic import BaseModel
 app = FastAPI()
 
 # In-memory stores
-task_queue = deque()  # queue of (task_id, data)
+task_queue = deque()  # queue of (task_id, function, data)
 task_status: Dict[str, str] = {}  # task_id -> "pending" | "processing" | "completed"
-task_function: Dict[str, str] = {}  # task_id -> original data
+task_function: Dict[str, str] = {}  # task_id -> original function
 task_data: Dict[str, list[Any]] = {}  # task_id -> original data
 task_results: Dict[str, str] = {}  # task_id -> result
 
@@ -40,12 +40,20 @@ async def enqueue_task(payload: TaskPayload):
 
 # Worker fetches next pending task
 @app.get("/get_task")
-async def get_task():
+async def get_task(function: str):
     if not task_queue:
         return {"task_id": None, "function": None, "data": None}
-    task_id, function, data = task_queue.popleft()
-    task_status[task_id] = "processing"
-    return {"task_id": task_id, "function": function, "data": data}
+
+    # Find the first task with the specified function
+    for i, (task_id, task_fn, data) in enumerate(task_queue):
+        if task_fn == function:
+            # Remove the task from the deque
+            del task_queue[i]
+            task_status[task_id] = "processing"
+            return {"task_id": task_id, "function": task_fn, "data": data}
+            
+    # No task with the specified function was found
+    return {"task_id": None, "function": None, "data": None}
 
 
 # Worker submits result
